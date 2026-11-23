@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Home</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="toolbar" class="toolbar" hidden>
+    <div class="toolbar-inner">
+      <span class="toolbar-title">Editing</span>
+      <span id="dirty" class="dirty" hidden>Unsaved changes</span>
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="btn-add-group">+ Group</button>
+      <button type="button" class="btn" id="btn-settings">Page settings</button>
+      <button type="button" class="btn" id="btn-raw">Edit YAML</button>
+      <button type="button" class="btn" id="btn-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="btn-save">Save</button>
+    </div>
+  </div>
+
+  <main id="page" class="wrap"></main>
+
+  <button type="button" id="btn-edit" class="fab" title="Edit page" aria-label="Edit page">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+  </button>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- Service editor -->
+  <dialog id="dlg-item" class="dlg">
+    <form method="dialog" id="form-item">
+      <h2 class="dlg-title" id="item-dlg-title">Edit link</h2>
+      <div class="preview-row">
+        <div id="item-preview" class="preview"></div>
+      </div>
+      <label>Title<input name="title" required autocomplete="off"></label>
+      <label>Description<input name="description" autocomplete="off"></label>
+      <label>Link<input name="link" placeholder="https://… or http://192.168.1.x" autocomplete="off"></label>
+      <label>Group<select name="group"></select></label>
+
+      <fieldset class="icon-fields">
+        <legend>Icon</legend>
+        <div class="seg">
+          <label><input type="radio" name="iconType" value="name" checked> Icon library</label>
+          <label><input type="radio" name="iconType" value="url"> Image URL</label>
+          <label><input type="radio" name="iconType" value="none"> None</label>
+        </div>
+        <div id="icon-name-row">
+          <label>Icon name <span class="hint">e.g. simple-icons:plex</span>
+            <input name="iconName" autocomplete="off" spellcheck="false">
+          </label>
+          <div class="search-row">
+            <input id="icon-search" placeholder="Search icons (plex, proxmox, camera…)" autocomplete="off">
+            <button type="button" class="btn" id="btn-icon-search">Search</button>
+          </div>
+          <div id="icon-results" class="icon-results"></div>
+        </div>
+        <div id="icon-url-row" hidden>
+          <label>Image URL<input name="iconUrl" placeholder="https://…/logo.png" autocomplete="off"></label>
+        </div>
+        <div class="color-row" id="icon-style-row">
+          <label class="inline">Colour
+            <input type="color" name="colorPick">
+            <input name="color" class="color-text" placeholder="#35c5f4" autocomplete="off">
+          </label>
+          <label class="inline"><input type="checkbox" name="wrap"> Tile background</label>
+        </div>
+      </fieldset>
+
+      <div class="dlg-actions">
+        <button type="button" class="btn btn-danger" id="btn-item-delete">Delete</button>
+        <button type="button" class="btn" id="btn-item-dup">Duplicate</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" id="btn-item-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btn-item-ok">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Page settings -->
+  <dialog id="dlg-settings" class="dlg">
+    <form method="dialog" id="form-settings">
+      <h2 class="dlg-title">Page settings</h2>
+      <label>Page title<input name="title" autocomplete="off"></label>
+      <fieldset>
+        <legend>Columns per row</legend>
+        <div class="cols">
+          <label>Small screens<input type="number" name="small" min="1" max="8"></label>
+          <label>Medium<input type="number" name="medium" min="1" max="8"></label>
+          <label>Large<input type="number" name="large" min="1" max="8"></label>
+          <label>Extra large<input type="number" name="xlarge" min="1" max="8"></label>
+        </div>
+      </fieldset>
+      <div class="dlg-actions">
+        <span class="spacer"></span>
+        <button type="button" class="btn" id="btn-settings-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Raw YAML -->
+  <dialog id="dlg-raw" class="dlg dlg-wide">
+    <form method="dialog" id="form-raw">
+      <h2 class="dlg-title">Edit config.yml directly</h2>
+      <p class="hint">Saving here writes the file straight away and discards any unsaved changes made in the visual editor.</p>
+      <textarea id="raw-text" spellcheck="false"></textarea>
+      <div id="raw-error" class="error" hidden></div>
+      <div class="dlg-actions">
+        <span class="spacer"></span>
+        <button type="button" class="btn" id="btn-raw-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save YAML</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

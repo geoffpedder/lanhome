@@ -1,0 +1,18 @@
+[Unit]
+Description=LAN Home (Mafl-style home page with editor)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/lanhome
+Environment=PORT=3000
+Environment=CONFIG=/opt/mafl/data/config.yml
+Environment=BACKUP_DIR=/opt/lanhome/backups
+# Uncomment and set to require a password for editing:
+#Environment=EDIT_PASSWORD=change-me
+ExecStart=/usr/bin/node /opt/lanhome/server.js
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

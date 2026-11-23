@@ -1,0 +1,16 @@
+{
+  "name": "lanhome",
+  "version": "1.0.0",
+  "description": "Home page dashboard with a built-in editor, compatible with Mafl's config.yml",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "yaml": "^2.5.0"
+  }
+}
