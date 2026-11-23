@@ -14,12 +14,15 @@
       <span id="dirty" class="dirty" hidden>Unsaved changes</span>
       <span class="spacer"></span>
       <button type="button" class="btn" id="btn-add-group">+ Group</button>
+      <button type="button" class="btn" id="btn-appearance">Appearance</button>
       <button type="button" class="btn" id="btn-settings">Page settings</button>
       <button type="button" class="btn" id="btn-raw">Edit YAML</button>
       <button type="button" class="btn" id="btn-cancel">Cancel</button>
       <button type="button" class="btn btn-primary" id="btn-save">Save</button>
     </div>
   </div>
+
+  <header id="hero" class="hero" hidden></header>
 
   <main id="page" class="wrap"></main>
 
@@ -97,6 +100,81 @@
       <div class="dlg-actions">
         <span class="spacer"></span>
         <button type="button" class="btn" id="btn-settings-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Appearance (side panel so the page stays visible as a live preview) -->
+  <dialog id="dlg-appearance" class="dlg dlg-side">
+    <form method="dialog" id="form-appearance">
+      <h2 class="dlg-title">Appearance</h2>
+      <p class="hint">Changes preview on the page behind this panel.</p>
+
+      <fieldset>
+        <legend>Header</legend>
+        <label class="inline"><input type="checkbox" name="headerEnabled"> Show header</label>
+        <div class="header-fields">
+          <label>Subtitle<input name="subtitle" placeholder="e.g. Everything on the home network" autocomplete="off"></label>
+          <div class="checks">
+            <label class="inline"><input type="checkbox" name="greeting"> Greeting</label>
+            <label class="inline"><input type="checkbox" name="clock"> Clock and date</label>
+            <label class="inline"><input type="checkbox" name="tall"> Tall header</label>
+          </div>
+
+          <div class="field-label">Background</div>
+          <div class="swatches" role="radiogroup" aria-label="Header background">
+            <label class="swatch sw-aurora" title="Aurora"><input type="radio" name="style" value="aurora"><span>Aurora</span></label>
+            <label class="swatch sw-sunset" title="Sunset"><input type="radio" name="style" value="sunset"><span>Sunset</span></label>
+            <label class="swatch sw-ocean" title="Ocean"><input type="radio" name="style" value="ocean"><span>Ocean</span></label>
+            <label class="swatch sw-forest" title="Forest"><input type="radio" name="style" value="forest"><span>Forest</span></label>
+            <label class="swatch sw-ember" title="Ember"><input type="radio" name="style" value="ember"><span>Ember</span></label>
+            <label class="swatch sw-mono" title="Graphite"><input type="radio" name="style" value="mono"><span>Graphite</span></label>
+            <label class="swatch sw-image" title="Your own image"><input type="radio" name="style" value="image"><span>Image</span></label>
+          </div>
+          <label id="hero-image-row">Background image URL<input name="image" placeholder="https://…/banner.jpg" autocomplete="off"></label>
+          <label class="inline"><input type="checkbox" name="animate"> Gently animate the background</label>
+
+          <div class="field-label">Logo</div>
+          <div class="seg">
+            <label><input type="radio" name="logoType" value="name"> Icon library</label>
+            <label><input type="radio" name="logoType" value="url"> Image URL</label>
+            <label><input type="radio" name="logoType" value="none"> None</label>
+          </div>
+          <div id="logo-name-row">
+            <input name="logoName" placeholder="e.g. ph:house-line-duotone" autocomplete="off" spellcheck="false" aria-label="Logo icon name">
+            <div class="search-row">
+              <input id="logo-search" placeholder="Search icons (house, server, rocket…)" autocomplete="off">
+              <button type="button" class="btn" id="btn-logo-search">Search</button>
+            </div>
+            <div id="logo-results" class="icon-results"></div>
+          </div>
+          <label id="logo-url-row">Logo image URL<input name="logoUrl" placeholder="https://…/logo.png" autocomplete="off"></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Page</legend>
+        <label class="inline">Accent colour
+          <input type="color" name="accent">
+          <span class="hint">used for glows and highlights</span>
+        </label>
+        <div class="field-label">Background</div>
+        <div class="seg">
+          <label><input type="radio" name="background" value="plain"> Plain</label>
+          <label><input type="radio" name="background" value="glow"> Soft glow</label>
+        </div>
+        <div class="field-label">Tiles</div>
+        <div class="seg">
+          <label><input type="radio" name="tiles" value="classic"> Classic</label>
+          <label><input type="radio" name="tiles" value="glass"> Glass cards</label>
+        </div>
+      </fieldset>
+
+      <div class="dlg-actions">
+        <button type="button" class="btn" id="btn-appearance-reset">Reset to default</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" id="btn-appearance-cancel">Cancel</button>
         <button type="submit" class="btn btn-primary">Done</button>
       </div>
     </form>

@@ -108,29 +108,110 @@ function toYaml(cfg) {
 }
 
 // ---------- icons (Iconify, cached on disk) ----------
+// Icons are fetched through Iconify's JSON API, one request per icon set for any number of icons.
+// Fetching each icon's .svg separately gets the whole network rate-limited by Iconify's CDN.
 const NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const inflight = new Map();
+const NOT_FOUND_TTL = 60 * 60 * 1000;
+const notFound = new Map(); // "prefix:name" -> time it was reported missing
+const inflight = new Map(); // upstream request key -> promise of icon set JSON
+
+class UpstreamError extends Error {}
 
 function sanitizeSvg(svg) {
   return svg
     .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '')
     .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*')/gi, '')
-    .replace(/(href\s*=\s*["'])\s*javascript:[^"']*/gi, '$1#');
+    .replace(/((?:xlink:)?href\s*=\s*["'])\s*javascript:[^"']*/gi, '$1#');
 }
 
-async function getIcon(prefix, name) {
-  const file = path.join(ICON_CACHE, `${prefix}--${name}.svg`);
-  if (fs.existsSync(file)) return fs.readFileSync(file, 'utf8');
-  const key = `${prefix}:${name}`;
+const cacheFile = (prefix, name) => path.join(ICON_CACHE, `${prefix}--${name}.svg`);
+
+function buildSvg(set, name) {
+  // Resolve aliases (an alias points at a parent icon and may add flips/rotation)
+  let icon = set.icons?.[name];
+  const extra = { hFlip: false, vFlip: false, rotate: 0 };
+  let cur = name;
+  for (let depth = 0; !icon && depth < 6; depth++) {
+    const alias = set.aliases?.[cur];
+    if (!alias) break;
+    if (alias.hFlip) extra.hFlip = !extra.hFlip;
+    if (alias.vFlip) extra.vFlip = !extra.vFlip;
+    extra.rotate += alias.rotate || 0;
+    for (const k of ['width', 'height', 'left', 'top']) if (alias[k] != null && extra[k] == null) extra[k] = alias[k];
+    cur = alias.parent;
+    icon = set.icons?.[cur];
+  }
+  if (!icon || typeof icon.body !== 'string') return null;
+  const left = extra.left ?? icon.left ?? set.left ?? 0;
+  const top = extra.top ?? icon.top ?? set.top ?? 0;
+  const width = extra.width ?? icon.width ?? set.width ?? 16;
+  const height = extra.height ?? icon.height ?? set.height ?? 16;
+  const hFlip = !!icon.hFlip !== extra.hFlip;
+  const vFlip = !!icon.vFlip !== extra.vFlip;
+  const rotate = (((icon.rotate || 0) + extra.rotate) % 4 + 4) % 4;
+  const cx = left + width / 2, cy = top + height / 2;
+  const transforms = [];
+  if (hFlip || vFlip) transforms.push(`translate(${cx} ${cy}) scale(${hFlip ? -1 : 1} ${vFlip ? -1 : 1}) translate(${-cx} ${-cy})`);
+  if (rotate) transforms.push(`rotate(${rotate * 90} ${cx} ${cy})`);
+  const body = transforms.length ? `<g transform="${transforms.join(' ')}">${icon.body}</g>` : icon.body;
+  return sanitizeSvg(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1em" height="1em" viewBox="${left} ${top} ${width} ${height}">${body}</svg>`);
+}
+
+async function fetchIconSet(prefix, names) {
+  const r = await fetch(`https://api.iconify.design/${prefix}.json?icons=${names.map(encodeURIComponent).join(',')}`, { signal: AbortSignal.timeout(10000) });
+  if (r.status === 404) return { icons: {} }; // unknown icon set
+  if (!r.ok) throw new UpstreamError(r.status === 429 ? 'The icon library is rate-limiting requests from your network. Try again in a few minutes.' : `The icon library answered ${r.status}.`);
+  const text = await r.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new UpstreamError('The icon library sent an unexpected answer.');
+  }
+}
+
+// Returns { svgs: { "prefix:name": svg|null }, error?: string }
+async function getIcons(fullNames) {
+  const svgs = {};
+  const missing = new Map(); // prefix -> [names]
+  for (const full of fullNames) {
+    const [prefix, name] = full.split(':');
+    if (!NAME_RE.test(prefix || '') || !NAME_RE.test(name || '')) { svgs[full] = null; continue; }
+    const file = cacheFile(prefix, name);
+    if (fs.existsSync(file)) { svgs[full] = fs.readFileSync(file, 'utf8'); continue; }
+    const nf = notFound.get(full);
+    if (nf && Date.now() - nf < NOT_FOUND_TTL) { svgs[full] = null; continue; }
+    if (!missing.has(prefix)) missing.set(prefix, []);
+    missing.get(prefix).push(name);
+  }
+  let error;
+  await Promise.all([...missing].map(async ([prefix, names]) => {
+    for (let i = 0; i < names.length; i += 60) {
+      const chunk = names.slice(i, i + 60);
+      try {
+        const set = await sharedFetch(prefix, chunk);
+        for (const n of chunk) {
+          const svg = buildSvg(set, n);
+          if (svg) fs.writeFileSync(cacheFile(prefix, n), svg, 'utf8');
+          else notFound.set(`${prefix}:${n}`, Date.now());
+          svgs[`${prefix}:${n}`] = svg;
+        }
+      } catch (e) {
+        for (const n of chunk) svgs[`${prefix}:${n}`] = null;
+        error = e instanceof UpstreamError ? e.message : 'Could not reach the icon library (no internet?).';
+      }
+    }
+  }));
+  return { svgs, error };
+}
+
+// Identical requests made at the same time share one upstream fetch.
+function sharedFetch(prefix, names) {
+  const key = `${prefix}?${names.join(',')}`;
   if (!inflight.has(key)) {
-    inflight.set(key, (async () => {
-      const r = await fetch(`https://api.iconify.design/${prefix}/${name}.svg`, { signal: AbortSignal.timeout(8000) });
-      const text = await r.text();
-      if (!r.ok || !text.trim().startsWith('<svg')) return null; // Iconify answers 404 for unknown icons
-      const clean = sanitizeSvg(text);
-      fs.writeFileSync(file, clean, 'utf8');
-      return clean;
-    })().finally(() => inflight.delete(key)));
+    const p = fetchIconSet(prefix, names);
+    inflight.set(key, p);
+    p.then(() => inflight.delete(key), () => inflight.delete(key));
   }
   return inflight.get(key);
 }
@@ -207,17 +288,20 @@ async function handle(req, res) {
     }
   }
 
+  if (p === '/api/icons' && req.method === 'GET') {
+    const names = [...new Set((url.searchParams.get('names') || '').split(',').map((s) => s.trim()).filter(Boolean))].slice(0, 200);
+    const { svgs, error } = await getIcons(names);
+    return send(res, 200, { svgs, error });
+  }
+
   const m = p.match(/^\/icon\/([^/]+)\/([^/]+)\.svg$/);
   if (m && req.method === 'GET') {
     const [, prefix, name] = m;
     if (!NAME_RE.test(prefix) || !NAME_RE.test(name)) return send(res, 400, 'bad icon name', 'text/plain');
-    try {
-      const svg = await getIcon(prefix, name);
-      if (!svg) return send(res, 404, 'icon not found', 'text/plain');
-      return send(res, 200, svg, 'image/svg+xml', { 'Cache-Control': 'public, max-age=604800' });
-    } catch {
-      return send(res, 502, 'icon fetch failed', 'text/plain');
-    }
+    const full = `${prefix}:${name}`;
+    const { svgs, error } = await getIcons([full]);
+    if (svgs[full]) return send(res, 200, svgs[full], 'image/svg+xml', { 'Cache-Control': 'public, max-age=604800' });
+    return error ? send(res, 502, error, 'text/plain') : send(res, 404, 'icon not found', 'text/plain');
   }
 
   return send(res, 404, { error: 'Not found' });

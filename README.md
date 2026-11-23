@@ -14,6 +14,7 @@ It reads and writes Mafl's `config.yml` format, so you can point it at an existi
   - drag tiles to reorder them or move them between groups
   - add, rename, reorder and delete groups
   - page title and columns per row
+  - appearance: a header with logo, greeting, clock and gradient or image background; accent colour; glass-card tiles
   - raw YAML editor with validation
 - Changes are staged until you click **Save** (or press Ctrl+S)
 - Every save keeps a timestamped backup of the previous file (last 30 by default)
@@ -95,6 +96,30 @@ services:
 - `icon.url` uses an image instead.
 - `icon.wrap` draws the tile background behind the icon.
 - `icon.color` colours single-colour icons.
+
+### Appearance
+
+The **Appearance** button in edit mode opens a panel that previews changes live. Settings are stored under `appearance` (Mafl ignores this key):
+
+```yaml
+appearance:
+  header:
+    enabled: true
+    subtitle: Everything on the home network
+    greeting: true          # "Good evening"
+    clock: true             # time and date on the right
+    size: compact           # compact | tall
+    style: aurora           # aurora | sunset | ocean | forest | ember | mono | image
+    image: https://example.com/banner.jpg   # used when style is image
+    animate: true           # slow drifting background
+    logo:
+      name: ph:house-line-duotone           # or url: https://…/logo.png, or logo: false for none
+  accent: "#8b5cf6"         # glows and highlights
+  background: glow          # plain | glow
+  tiles: classic            # classic | glass
+```
+
+Without an `appearance` section the page uses these defaults (an Aurora header with a house logo, greeting and clock).
 
 Keys the editor doesn't know about are kept when saving. Saving rewrites the file, so comments and custom formatting in it are not preserved.
 

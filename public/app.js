@@ -64,6 +64,102 @@ function gridSettings(cfg) {
   return { small: g.small ?? 2, medium: g.medium ?? 2, large: g.large ?? 3, xlarge: g.xlarge ?? 4 };
 }
 
+// ---------- appearance ----------
+const APPEARANCE_DEFAULTS = {
+  header: {
+    enabled: true,
+    subtitle: '',
+    greeting: true,
+    clock: true,
+    size: 'compact',      // compact | tall
+    style: 'aurora',      // aurora | sunset | ocean | forest | ember | mono | image
+    image: '',
+    animate: true,
+    logo: { name: 'ph:house-line-duotone' },
+  },
+  accent: '#8b5cf6',
+  background: 'glow',     // plain | glow
+  tiles: 'classic',       // classic | glass
+};
+const PRESETS = ['aurora', 'sunset', 'ocean', 'forest', 'ember', 'mono', 'image'];
+
+function appearanceFrom(cfg) {
+  const a = (cfg && typeof cfg.appearance === 'object' && cfg.appearance) || {};
+  const h = (a.header && typeof a.header === 'object') ? a.header : {};
+  const d = APPEARANCE_DEFAULTS;
+  return {
+    header: {
+      ...d.header, ...h,
+      logo: h.logo === null || h.logo === false ? null : normIcon(h.logo) || d.header.logo,
+    },
+    accent: a.accent || d.accent,
+    background: a.background || d.background,
+    tiles: a.tiles || d.tiles,
+  };
+}
+
+function currentAppearance() {
+  return state.editing && state.settingsDraft ? state.settingsDraft.appearance : appearanceFrom(state.config);
+}
+
+function greetingText(now = new Date()) {
+  const h = now.getHours();
+  return h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+}
+
+function updateClock() {
+  const now = new Date();
+  const t = document.querySelector('.hero-time');
+  if (t) t.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const d = document.querySelector('.hero-date');
+  if (d) d.textContent = now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+  const g = document.querySelector('.hero-greeting');
+  if (g) g.textContent = greetingText(now);
+}
+setInterval(updateClock, 15000);
+
+function applyTheme(app) {
+  document.documentElement.style.setProperty('--accent', app.accent);
+  document.body.classList.toggle('bg-glow', app.background === 'glow');
+  document.body.classList.toggle('tiles-glass', app.tiles === 'glass');
+}
+
+function renderHero(app, title) {
+  const hero = $('#hero');
+  const h = app.header;
+  if (!h.enabled) { hero.hidden = true; hero.replaceChildren(); return; }
+  const style = PRESETS.includes(h.style) ? h.style : 'aurora';
+  hero.className = `hero p-${style}${h.size === 'tall' ? ' tall' : ''}${h.animate && style !== 'image' ? ' animate' : ''}`;
+
+  let bg;
+  if (style === 'image' && h.image) {
+    bg = el('div', { class: 'hero-photo' });
+    bg.style.backgroundImage = `url("${String(h.image).replace(/["\\\n\r]/g, '')}")`;
+  } else {
+    bg = el('div', { class: 'hero-bg' },
+      el('div', { class: 'blob b1' }), el('div', { class: 'blob b2' }), el('div', { class: 'blob b3' }));
+  }
+
+  let logo = null;
+  if (h.logo && (h.logo.url || h.logo.name)) {
+    logo = el('div', { class: `hero-logo${h.logo.url ? ' is-img' : ''}` });
+    if (h.logo.color) logo.style.color = h.logo.color;
+    if (h.logo.url) logo.append(el('img', { src: h.logo.url, alt: '', referrerpolicy: 'no-referrer' }));
+    else loadSvg(h.logo.name).then((svg) => setSvg(logo, svg));
+  }
+
+  const text = el('div', { class: 'hero-text' },
+    h.greeting ? el('div', { class: 'hero-greeting', text: greetingText() }) : null,
+    el('h1', { text: title }),
+    h.subtitle ? el('p', { class: 'hero-sub', text: h.subtitle }) : null);
+
+  const clock = h.clock ? el('div', { class: 'hero-clock' }, el('div', { class: 'hero-time' }), el('div', { class: 'hero-date' })) : null;
+
+  hero.replaceChildren(bg, el('div', { class: 'hero-inner' }, logo, text, clock));
+  hero.hidden = false;
+  updateClock();
+}
+
 function buildConfig() {
   const cfg = clone(state.config) || {};
   const services = {};
@@ -73,15 +169,61 @@ function buildConfig() {
 }
 
 // ---------- icons ----------
-const svgCache = new Map();
+// Icons requested in the same moment are fetched together in one request to /api/icons.
+const svgCache = new Map();   // name -> Promise<svg|null>
+let iconQueue = new Map();    // name -> resolve
+let iconTimer = null;
+let lastIconError = null;
+
 function loadSvg(name) {
   if (!svgCache.has(name)) {
-    const [prefix, icon] = name.split(':');
-    svgCache.set(name, fetch(`/icon/${encodeURIComponent(prefix)}/${encodeURIComponent(icon)}.svg`)
-      .then((r) => (r.ok ? r.text() : null))
-      .catch(() => null));
+    svgCache.set(name, new Promise((resolve) => iconQueue.set(name, resolve)));
+    if (!iconTimer) iconTimer = setTimeout(flushIcons, 0);
   }
   return svgCache.get(name);
+}
+
+async function flushIcons() {
+  iconTimer = null;
+  const batch = iconQueue;
+  iconQueue = new Map();
+  const names = [...batch.keys()];
+  for (let i = 0; i < names.length; i += 150) {
+    const chunk = names.slice(i, i + 150);
+    let j;
+    try {
+      const r = await fetch(`/api/icons?names=${encodeURIComponent(chunk.join(','))}`);
+      j = await r.json();
+    } catch {
+      j = { svgs: {}, error: 'Could not reach the server.' };
+    }
+    lastIconError = j.error || null;
+    for (const n of chunk) {
+      const svg = j.svgs?.[n] || null;
+      if (!svg && j.error) svgCache.delete(n); // temporary failure: allow a retry later
+      batch.get(n)(svg);
+    }
+  }
+}
+
+// Give each inline SVG's internal ids a unique suffix, so the same icon shown twice
+// (or two flags that both use id="a") don't break each other's clip paths and gradients.
+let idSeq = 0;
+function uniqueIds(svg) {
+  const ids = [...new Set([...svg.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]))];
+  if (!ids.length) return svg;
+  const sfx = `-u${++idSeq}`;
+  for (const id of ids) {
+    const esc = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    svg = svg
+      .replace(new RegExp(`\\bid="${esc}"`, 'g'), `id="${id}${sfx}"`)
+      .replace(new RegExp(`url\\(#${esc}\\)`, 'g'), `url(#${id}${sfx})`)
+      .replace(new RegExp(`href="#${esc}"`, 'g'), `href="#${id}${sfx}"`);
+  }
+  return svg;
+}
+function setSvg(node, svg) {
+  if (svg) node.innerHTML = uniqueIds(svg); // served by our own server, sanitized there
 }
 
 function normIcon(icon) {
@@ -102,7 +244,7 @@ function iconNode(rawIcon) {
     box.classList.add('loading');
     loadSvg(icon.name).then((svg) => {
       box.classList.remove('loading');
-      if (svg) box.innerHTML = svg; // served by our own server, sanitized there
+      setSvg(box, svg);
     });
   }
   return el('div', { class: 'icon-outer' }, el('div', { class: 'icon-size' }, box));
@@ -138,6 +280,9 @@ function render() {
   const grid = state.editing && state.settingsDraft ? state.settingsDraft.grid : gridSettings(cfg);
   const title = (state.editing && state.settingsDraft ? state.settingsDraft.title : cfg.title) || 'Home';
   document.title = title;
+  const app = currentAppearance();
+  applyTheme(app);
+  renderHero(app, title);
   page.style.setProperty('--cols-sm', grid.small);
   page.style.setProperty('--cols-md', grid.medium);
   page.style.setProperty('--cols-lg', grid.large);
@@ -276,7 +421,7 @@ async function enterEdit() {
   if (!(await ensurePassword())) return;
   state.editing = true;
   state.dirty = false;
-  state.settingsDraft = { title: state.config.title || '', grid: gridSettings(state.config) };
+  state.settingsDraft = { title: state.config.title || '', grid: gridSettings(state.config), appearance: appearanceFrom(state.config) };
   document.body.classList.add('editing');
   $('#toolbar').hidden = false;
   $('#dirty').hidden = true;
@@ -300,6 +445,13 @@ function applySettingsTo(cfg) {
   const g = { small: +s.grid.small, medium: +s.grid.medium, large: +s.grid.large, xlarge: +s.grid.xlarge };
   if (cfg.layout && typeof cfg.layout === 'object' && cfg.layout.grid) cfg.layout.grid = g;
   else cfg.grid = g;
+  if (s.appearance) {
+    const a = clone(s.appearance);
+    if (!a.header.subtitle) delete a.header.subtitle;
+    if (!a.header.image) delete a.header.image;
+    if (a.header.logo == null) a.header.logo = false; // keep "no logo" distinct from "default logo"
+    cfg.appearance = a;
+  }
   return cfg;
 }
 
@@ -444,34 +596,151 @@ $('#btn-item-dup').addEventListener('click', () => {
   openItemDialog(gi, ii + 1);
 });
 
-// icon search
-async function searchIcons() {
-  const q = $('#icon-search').value.trim();
-  const box = $('#icon-results');
+// icon search (shared by the link editor and the logo picker)
+async function runIconSearch(q, box, color, onPick) {
+  q = q.trim();
   if (!q) { box.replaceChildren(); return; }
   box.replaceChildren(el('div', { class: 'msg', text: 'Searching…' }));
   try {
     const r = await fetch(`/api/icon-search?q=${encodeURIComponent(q)}`);
     const j = await r.json();
     if (!j.icons?.length) { box.replaceChildren(el('div', { class: 'msg', text: j.error || 'No icons found.' })); return; }
-    box.replaceChildren(...j.icons.map((name) => {
+    const buttons = j.icons.map((name) => {
       const b = el('button', { type: 'button', title: name, 'aria-label': name });
-      b.style.color = fItem.elements.color.value.trim() || '#fff';
-      loadSvg(name).then((svg) => { if (svg) b.innerHTML = svg; });
+      b.style.color = color || '#fff';
       b.addEventListener('click', () => {
-        fItem.elements.iconName.value = name;
         box.querySelectorAll('.selected').forEach((n) => n.classList.remove('selected'));
         b.classList.add('selected');
-        updatePreview();
+        onPick(name);
       });
       return b;
-    }));
+    });
+    box.replaceChildren(...buttons);
+    const results = await Promise.all(j.icons.map((name, i) => loadSvg(name).then((svg) => { setSvg(buttons[i], svg); return svg; })));
+    const shown = results.filter(Boolean).length;
+    if (shown < results.length && lastIconError) {
+      box.prepend(el('div', { class: 'msg', text: `${lastIconError}${shown ? ` (${results.length - shown} of ${results.length} icons could not be loaded.)` : ''}` }));
+    }
+    buttons.forEach((b, i) => { if (!results[i]) b.remove(); });
   } catch {
     box.replaceChildren(el('div', { class: 'msg', text: 'Icon search failed.' }));
   }
 }
+
+function searchIcons() {
+  runIconSearch($('#icon-search').value, $('#icon-results'), fItem.elements.color.value.trim() || '#fff', (name) => {
+    fItem.elements.iconName.value = name;
+    updatePreview();
+  });
+}
 $('#btn-icon-search').addEventListener('click', searchIcons);
 $('#icon-search').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); searchIcons(); } });
+
+// ---------- appearance panel ----------
+const dlgApp = $('#dlg-appearance');
+const fApp = $('#form-appearance');
+let appearanceBefore = null;
+
+function fillAppearanceForm(a) {
+  const f = fApp.elements;
+  const h = a.header;
+  f.headerEnabled.checked = !!h.enabled;
+  f.subtitle.value = h.subtitle || '';
+  f.greeting.checked = !!h.greeting;
+  f.clock.checked = !!h.clock;
+  f.tall.checked = h.size === 'tall';
+  f.style.value = PRESETS.includes(h.style) ? h.style : 'aurora';
+  f.image.value = h.image || '';
+  f.animate.checked = !!h.animate;
+  f.logoType.value = !h.logo ? 'none' : h.logo.url ? 'url' : 'name';
+  f.logoName.value = h.logo?.name || '';
+  f.logoUrl.value = h.logo?.url || '';
+  f.accent.value = /^#[0-9a-f]{6}$/i.test(a.accent) ? a.accent : APPEARANCE_DEFAULTS.accent;
+  f.background.value = a.background;
+  f.tiles.value = a.tiles;
+  syncAppearanceRows();
+}
+
+function syncAppearanceRows() {
+  const f = fApp.elements;
+  fApp.querySelector('.header-fields').hidden = !f.headerEnabled.checked;
+  $('#hero-image-row').hidden = f.style.value !== 'image';
+  $('#logo-name-row').hidden = f.logoType.value !== 'name';
+  $('#logo-url-row').hidden = f.logoType.value !== 'url';
+}
+
+function readAppearanceForm() {
+  const f = fApp.elements;
+  const prev = state.settingsDraft.appearance;
+  const logoType = f.logoType.value;
+  const prevLogo = prev.header.logo && typeof prev.header.logo === 'object' ? prev.header.logo : {};
+  let logo = null;
+  if (logoType === 'name') { logo = { ...prevLogo, name: f.logoName.value.trim() }; delete logo.url; }
+  if (logoType === 'url') { logo = { ...prevLogo, url: f.logoUrl.value.trim() }; delete logo.name; }
+  return {
+    ...prev,
+    header: {
+      ...prev.header,
+      enabled: f.headerEnabled.checked,
+      subtitle: f.subtitle.value.trim(),
+      greeting: f.greeting.checked,
+      clock: f.clock.checked,
+      size: f.tall.checked ? 'tall' : 'compact',
+      style: f.style.value || 'aurora',
+      image: f.image.value.trim(),
+      animate: f.animate.checked,
+      logo,
+    },
+    accent: f.accent.value,
+    background: f.background.value || 'glow',
+    tiles: f.tiles.value || 'classic',
+  };
+}
+
+function previewAppearance() {
+  syncAppearanceRows();
+  state.settingsDraft.appearance = readAppearanceForm();
+  const app = state.settingsDraft.appearance;
+  applyTheme(app);
+  renderHero(app, state.settingsDraft.title || 'Home');
+}
+
+$('#btn-appearance').addEventListener('click', () => {
+  appearanceBefore = clone(state.settingsDraft.appearance);
+  fillAppearanceForm(state.settingsDraft.appearance);
+  $('#logo-search').value = '';
+  $('#logo-results').replaceChildren();
+  dlgApp.showModal();
+});
+fApp.addEventListener('input', previewAppearance);
+fApp.addEventListener('change', previewAppearance);
+fApp.addEventListener('submit', (e) => {
+  e.preventDefault();
+  previewAppearance();
+  dlgApp.close();
+  if (JSON.stringify(appearanceBefore) !== JSON.stringify(state.settingsDraft.appearance)) markDirty();
+  render();
+});
+function cancelAppearance() {
+  if (appearanceBefore) state.settingsDraft.appearance = appearanceBefore;
+  dlgApp.close();
+  render();
+}
+$('#btn-appearance-cancel').addEventListener('click', cancelAppearance);
+dlgApp.addEventListener('cancel', (e) => { e.preventDefault(); cancelAppearance(); });
+$('#btn-appearance-reset').addEventListener('click', () => {
+  fillAppearanceForm(clone(APPEARANCE_DEFAULTS));
+  previewAppearance();
+});
+function searchLogo() {
+  runIconSearch($('#logo-search').value, $('#logo-results'), '#fff', (name) => {
+    fApp.elements.logoType.value = 'name';
+    fApp.elements.logoName.value = name;
+    previewAppearance();
+  });
+}
+$('#btn-logo-search').addEventListener('click', searchLogo);
+$('#logo-search').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); searchLogo(); } });
 
 // ---------- settings dialog ----------
 const dlgSettings = $('#dlg-settings');
