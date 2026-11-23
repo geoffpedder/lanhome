@@ -110,3 +110,7 @@ Keys the editor doesn't know about are kept when saving. Saving rewrites the fil
 | `GET /icon/<prefix>/<name>.svg` | Cached Iconify icon |
 
 Saving requests send the password in the `X-Edit-Password` header when one is set.
+
+## License
+
+[MIT](LICENSE)
