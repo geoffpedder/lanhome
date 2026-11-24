@@ -14,7 +14,7 @@ It reads and writes Mafl's `config.yml` format, so you can point it at an existi
   - drag tiles to reorder them or move them between groups
   - add, rename, reorder and delete groups
   - page title and columns per row
-  - appearance: a header with logo, greeting, clock and gradient or image background; accent colour; glass-card tiles
+  - appearance: a header with logo, greeting, clock and gradient or image background; accent colour; glass-card tiles; compact spacing
   - raw YAML editor with validation
 - Changes are staged until you click **Save** (or press Ctrl+S)
 - Every save keeps a timestamped backup of the previous file (last 30 by default)
@@ -117,6 +117,7 @@ appearance:
   accent: "#8b5cf6"         # glows and highlights
   background: glow          # plain | glow
   tiles: classic            # classic | glass
+  density: comfortable      # comfortable | compact (tighter vertical spacing)
 ```
 
 Without an `appearance` section the page uses these defaults (an Aurora header with a house logo, greeting and clock).

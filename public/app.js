@@ -80,6 +80,7 @@ const APPEARANCE_DEFAULTS = {
   accent: '#8b5cf6',
   background: 'glow',     // plain | glow
   tiles: 'classic',       // classic | glass
+  density: 'comfortable', // comfortable | compact
 };
 const PRESETS = ['aurora', 'sunset', 'ocean', 'forest', 'ember', 'mono', 'image'];
 
@@ -95,6 +96,7 @@ function appearanceFrom(cfg) {
     accent: a.accent || d.accent,
     background: a.background || d.background,
     tiles: a.tiles || d.tiles,
+    density: a.density || d.density,
   };
 }
 
@@ -122,6 +124,7 @@ function applyTheme(app) {
   document.documentElement.style.setProperty('--accent', app.accent);
   document.body.classList.toggle('bg-glow', app.background === 'glow');
   document.body.classList.toggle('tiles-glass', app.tiles === 'glass');
+  document.body.classList.toggle('density-compact', app.density === 'compact');
 }
 
 function renderHero(app, title) {
@@ -658,6 +661,7 @@ function fillAppearanceForm(a) {
   f.accent.value = /^#[0-9a-f]{6}$/i.test(a.accent) ? a.accent : APPEARANCE_DEFAULTS.accent;
   f.background.value = a.background;
   f.tiles.value = a.tiles;
+  f.density.value = a.density || 'comfortable';
   syncAppearanceRows();
 }
 
@@ -694,6 +698,7 @@ function readAppearanceForm() {
     accent: f.accent.value,
     background: f.background.value || 'glow',
     tiles: f.tiles.value || 'classic',
+    density: f.density.value || 'comfortable',
   };
 }
 
