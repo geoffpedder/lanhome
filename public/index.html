@@ -43,6 +43,7 @@
       <label>Description<input name="description" autocomplete="off"></label>
       <label>Link<input name="link" placeholder="https://… or http://192.168.1.x" autocomplete="off"></label>
       <label>Group<select name="group"></select></label>
+      <label class="inline"><input type="checkbox" name="statusCheck"> Show a status dot (checks that the link answers)</label>
 
       <fieldset class="icon-fields">
         <legend>Icon</legend>
@@ -174,6 +175,7 @@
           <label><input type="radio" name="tiles" value="classic"> Classic</label>
           <label><input type="radio" name="tiles" value="glass"> Glass cards</label>
         </div>
+        <label class="inline"><input type="checkbox" name="status"> Status dots on tiles <span class="hint">green = answering, red = down</span></label>
       </fieldset>
 
       <div class="dlg-actions">

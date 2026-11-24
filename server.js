@@ -1,6 +1,7 @@
 // LAN Home: a Mafl-style home page with a built-in editor.
 // Reads and writes the same config.yml format Mafl uses, so the two stay interchangeable.
 import http from 'node:http';
+import https from 'node:https';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -216,6 +217,74 @@ function sharedFetch(prefix, names) {
   return inflight.get(key);
 }
 
+// ---------- status checks ----------
+// Only links that are in the config are checked, so this can't be used to probe arbitrary hosts.
+const STATUS_TTL = 30 * 1000;
+const STATUS_TIMEOUT = Number(process.env.STATUS_TIMEOUT || 5000);
+const statusCache = new Map(); // target -> { at, result }
+const statusInflight = new Map();
+
+function statusTargets(cfg) {
+  const s = cfg?.services;
+  const groups = !s ? [] : Array.isArray(s) ? [s] : Object.values(s);
+  const out = new Set();
+  for (const items of groups) {
+    for (const it of Array.isArray(items) ? items : []) {
+      if (!it || it.status === false) continue;
+      const t = typeof it.status === 'string' && it.status.trim() ? it.status.trim() : it.link;
+      if (typeof t === 'string' && /^https?:\/\//i.test(t.trim())) out.add(t.trim());
+    }
+  }
+  return [...out];
+}
+
+function probe(target) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    let done = false;
+    const finish = (r) => { if (!done) { done = true; resolve({ ...r, ms: Date.now() - start }); } };
+    let u;
+    try { u = new URL(target); } catch { return finish({ up: false, error: 'bad URL' }); }
+    const mod = u.protocol === 'https:' ? https : http;
+    // Self-signed certificates are common on a LAN; this only checks that something answers.
+    const req = mod.request(u, { method: 'GET', rejectUnauthorized: false, timeout: STATUS_TIMEOUT, headers: { 'User-Agent': 'lanhome-status' } }, (res) => {
+      const code = res.statusCode;
+      // 502/503/504 usually mean a reverse proxy is up but the service behind it isn't.
+      finish({ up: ![502, 503, 504].includes(code), code });
+      res.destroy();
+    });
+    req.on('timeout', () => { finish({ up: false, error: 'timed out' }); req.destroy(); });
+    const reasons = { ECONNREFUSED: 'connection refused', ENOTFOUND: 'name not found', EHOSTUNREACH: 'host unreachable', ENETUNREACH: 'network unreachable', ECONNRESET: 'connection reset', ETIMEDOUT: 'timed out' };
+    req.on('error', (e) => finish({ up: false, error: reasons[e.code] || e.code || e.message }));
+    req.end();
+  });
+}
+
+function checkStatus(target) {
+  const c = statusCache.get(target);
+  if (c && Date.now() - c.at < STATUS_TTL) return Promise.resolve(c.result);
+  if (statusInflight.has(target)) return statusInflight.get(target);
+  const pr = probe(target).then((result) => {
+    statusCache.set(target, { at: Date.now(), result });
+    statusInflight.delete(target);
+    return result;
+  });
+  statusInflight.set(target, pr);
+  return pr;
+}
+
+async function allStatus() {
+  let cfg;
+  try { cfg = YAML.parse(readConfigText()) || {}; } catch { return {}; }
+  const targets = statusTargets(cfg);
+  const results = {};
+  const queue = [...targets];
+  const worker = async () => { while (queue.length) { const t = queue.shift(); results[t] = await checkStatus(t); } };
+  await Promise.all(Array.from({ length: Math.min(12, queue.length) }, worker));
+  for (const k of statusCache.keys()) if (!targets.includes(k)) statusCache.delete(k);
+  return results;
+}
+
 // ---------- routes ----------
 async function handle(req, res) {
   const url = new URL(req.url, 'http://x');
@@ -274,6 +343,10 @@ async function handle(req, res) {
 
   if (p === '/api/raw' && req.method === 'GET') {
     return send(res, 200, { raw: readConfigText(), version: fileVersion() });
+  }
+
+  if (p === '/api/status' && req.method === 'GET') {
+    return send(res, 200, { results: await allStatus(), checkedAt: Date.now() }, undefined, { 'Cache-Control': 'no-store' });
   }
 
   if (p === '/api/icon-search' && req.method === 'GET') {

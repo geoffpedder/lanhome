@@ -10,6 +10,7 @@ const state = {
   dirty: false,
   password: sessionStorage.getItem('lanhome-pw') || '',
   passwordRequired: false,
+  status: {},       // link -> { up, ms, code?, error? } from /api/status
 };
 
 // ---------- small utilities ----------
@@ -81,6 +82,7 @@ const APPEARANCE_DEFAULTS = {
   background: 'glow',     // plain | glow
   tiles: 'classic',       // classic | glass
   density: 'comfortable', // comfortable | compact
+  status: true,           // status dots on tiles
 };
 const PRESETS = ['aurora', 'sunset', 'ocean', 'forest', 'ember', 'mono', 'image'];
 
@@ -97,6 +99,7 @@ function appearanceFrom(cfg) {
     background: a.background || d.background,
     tiles: a.tiles || d.tiles,
     density: a.density || d.density,
+    status: a.status ?? d.status,
   };
 }
 
@@ -260,6 +263,11 @@ function cardNode(item, gi, ii) {
     el('h3', { text: item.title || '(untitled)' }),
     item.description ? el('p', { text: String(item.description).trim() }) : null);
   const a = el('a', { class: 'card', href: item.link || '#', target: '_blank', rel: 'noopener' }, icon, text);
+  const target = statusTarget(item);
+  if (!state.editing && currentAppearance().status && target) {
+    a.dataset.statusTarget = target;
+    a.append(el('span', { class: 'status-dot', role: 'img', 'aria-label': 'Status unknown', title: 'Checking…' }));
+  }
   if (state.editing) {
     a.removeAttribute('target');
     a.draggable = true;
@@ -315,7 +323,43 @@ function render() {
         svgButton('trash', 'Delete group', () => deleteGroup(gi))));
     page.append(el('section', { class: 'group' }, head, gridEl));
   });
+  updateDots();
 }
+
+// ---------- status dots ----------
+const STATUS_REFRESH = 60 * 1000;
+
+function statusTarget(item) {
+  if (!item || item.status === false) return null;
+  const t = typeof item.status === 'string' && item.status.trim() ? item.status.trim() : (item.link || '').trim();
+  return /^https?:\/\//i.test(t) ? t : null;
+}
+
+function updateDots() {
+  for (const card of page.querySelectorAll('.card[data-status-target]')) {
+    const dot = card.querySelector('.status-dot');
+    const r = state.status?.[card.dataset.statusTarget];
+    if (!dot) continue;
+    dot.classList.toggle('up', !!r?.up);
+    dot.classList.toggle('down', !!r && !r.up);
+    const label = !r ? 'Checking…' : r.up ? `Up · ${r.ms} ms` : `Down · ${r.error || `HTTP ${r.code}`}`;
+    dot.title = label;
+    dot.setAttribute('aria-label', label);
+  }
+}
+
+let statusBusy = false;
+async function refreshStatus() {
+  if (statusBusy || document.hidden || state.editing || !state.config || !appearanceFrom(state.config).status) return;
+  statusBusy = true;
+  try {
+    const r = await fetch('/api/status');
+    if (r.ok) { state.status = (await r.json()).results || {}; updateDots(); }
+  } catch { /* server unreachable; keep the last known state */ }
+  statusBusy = false;
+}
+setInterval(refreshStatus, STATUS_REFRESH);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshStatus(); });
 
 // ---------- group operations ----------
 function renameGroup(gi, input) {
@@ -439,6 +483,7 @@ function exitEdit() {
   $('#toolbar').hidden = true;
   state.groups = groupsFromConfig(state.config);
   render();
+  refreshStatus();
 }
 
 function applySettingsTo(cfg) {
@@ -494,6 +539,7 @@ function readItemForm(base) {
   if (desc) item.description = desc; else delete item.description;
   const link = f.link.value.trim();
   if (link) item.link = link; else delete item.link;
+  if (f.statusCheck.checked) { if (item.status === false) delete item.status; } else item.status = false;
 
   const type = f.iconType.value;
   if (type === 'none') {
@@ -543,6 +589,7 @@ function openItemDialog(gi, ii) {
   f.color.value = icon?.color || '';
   f.colorPick.value = /^#[0-9a-f]{6}$/i.test(icon?.color || '') ? icon.color : '#ffffff';
   f.wrap.checked = icon ? !!icon.wrap : true;
+  f.statusCheck.checked = item.status !== false;
   $('#icon-search').value = '';
   $('#icon-results').replaceChildren();
   setIconType(type);
@@ -662,6 +709,7 @@ function fillAppearanceForm(a) {
   f.background.value = a.background;
   f.tiles.value = a.tiles;
   f.density.value = a.density || 'comfortable';
+  f.status.checked = a.status !== false;
   syncAppearanceRows();
 }
 
@@ -699,6 +747,7 @@ function readAppearanceForm() {
     background: f.background.value || 'glow',
     tiles: f.tiles.value || 'classic',
     density: f.density.value || 'comfortable',
+    status: f.status.checked,
   };
 }
 
@@ -842,6 +891,7 @@ async function load() {
   state.config = j.config;
   state.groups = groupsFromConfig(j.config);
   render();
+  refreshStatus();
 }
 
 load().catch((e) => {

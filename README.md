@@ -16,6 +16,7 @@ It reads and writes Mafl's `config.yml` format, so you can point it at an existi
   - page title and columns per row
   - appearance: a header with logo, greeting, clock and gradient or image background; accent colour; glass-card tiles; compact spacing
   - raw YAML editor with validation
+- Status dots: each tile shows green when its link answers and red when it doesn't, refreshed every minute. Checks run on the server, so they work for HTTP links and self-signed HTTPS
 - Changes are staged until you click **Save** (or press Ctrl+S)
 - Every save keeps a timestamped backup of the previous file (last 30 by default)
 - Refuses to save over a file that was changed elsewhere since you opened the page
@@ -48,6 +49,7 @@ All settings are environment variables:
 | `KEEP_BACKUPS` | `30` | How many backups to keep |
 | `ICON_CACHE` | `./icon-cache` | Where downloaded icons are cached |
 | `EDIT_PASSWORD` | *(unset)* | If set, editing and saving require this password |
+| `STATUS_TIMEOUT` | `5000` | Milliseconds before a status check counts as down |
 
 Without `EDIT_PASSWORD`, anyone who can reach the page can edit it. Set one if the page is reachable by people you don't want editing it.
 
@@ -96,6 +98,7 @@ services:
 - `icon.url` uses an image instead.
 - `icon.wrap` draws the tile background behind the icon.
 - `icon.color` colours single-colour icons.
+- `status: false` turns off the status dot for one link; `status: http://…` checks a different URL than the one the tile opens.
 
 ### Appearance
 
@@ -118,6 +121,7 @@ appearance:
   background: glow          # plain | glow
   tiles: classic            # classic | glass
   density: comfortable      # comfortable | compact (tighter vertical spacing)
+  status: true              # status dots on tiles
 ```
 
 Without an `appearance` section the page uses these defaults (an Aurora header with a house logo, greeting and clock).
@@ -132,6 +136,7 @@ Keys the editor doesn't know about are kept when saving. Saving rewrites the fil
 | `PUT /api/config` | Save a config object (`{ config, version }`) |
 | `GET /api/raw`, `PUT /api/raw` | Read or save the YAML text (`{ raw, version }`) |
 | `POST /api/auth` | Check the edit password (`X-Edit-Password` header) |
+| `GET /api/status` | Up/down, response time and reason for every link in the config (cached 30 s) |
 | `GET /api/icon-search?q=` | Search Iconify |
 | `GET /icon/<prefix>/<name>.svg` | Cached Iconify icon |
 
