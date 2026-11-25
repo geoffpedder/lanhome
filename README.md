@@ -6,6 +6,10 @@ It reads and writes Mafl's `config.yml` format, so you can point it at an existi
 
 ![LAN Home with a header, clock and status dots on every tile](docs/home.png)
 
+Compact spacing with the Ocean header:
+
+![LAN Home in compact view](docs/compact.png)
+
 | Edit a tile in the page | Appearance panel with live preview |
 |---|---|
 | ![Edit link dialog](docs/editor.png) | ![Appearance panel](docs/appearance.png) |
