@@ -53,6 +53,16 @@ All settings are environment variables:
 
 Without `EDIT_PASSWORD`, anyone who can reach the page can edit it. Set one if the page is reachable by people you don't want editing it.
 
+## Proxmox VE container
+
+Run this in the Proxmox VE host shell to create a Debian 13 LXC with LAN Home installed (1 CPU, 512 MB RAM, 2 GB disk by default). It uses the [community-scripts](https://community-scripts.org) engine, so you get the same menus, defaults and advanced settings as their scripts:
+
+```sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/geoffpedder/lanhome/main/proxmox/ct/lanhome.sh)"
+```
+
+LAN Home then listens on `http://<container-ip>:3000`. Settings are in `/opt/lanhome_data/.env` (restart with `systemctl restart lanhome` after editing), and the config, backups and icon cache live in `/opt/lanhome_data`. Run `update` in the container's console to move to the latest release.
+
 ## Running as a service
 
 `lanhome.service` is an example systemd unit that expects the app in `/opt/lanhome`:
