@@ -4,6 +4,12 @@ A self-hosted home page for your local network that looks like [Mafl](https://gi
 
 It reads and writes Mafl's `config.yml` format, so you can point it at an existing Mafl config and switch between the two.
 
+![LAN Home with a header, clock and status dots on every tile](docs/home.png)
+
+| Edit a tile in the page | Appearance panel with live preview |
+|---|---|
+| ![Edit link dialog](docs/editor.png) | ![Appearance panel](docs/appearance.png) |
+
 ## Features
 
 - Mafl-style layout: groups of tiles with icon, title and description, responsive column counts
